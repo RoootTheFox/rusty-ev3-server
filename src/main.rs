@@ -136,20 +136,20 @@ fn press_key(key:&str) {
     command.status().unwrap();
 }
 
-fn keepalive_thread(results: &Mutex<HashMap<SocketAddr, Ev3Connection>>) {
+fn keepalive_thread(connections: &Mutex<HashMap<SocketAddr, Ev3Connection>>) {
     loop {
-        let mut results = results.lock().unwrap();
-        for (addr, connection) in results.clone().iter_mut() {
+        let mut connections = connections.lock().unwrap();
+        for (addr, connection) in connections.clone().iter_mut() {
             if connection.connected {
                 if SystemTime::now().duration_since(time::UNIX_EPOCH).unwrap().as_secs() - connection.last_seen > 5 {
                     println!("{} {} {}", "EV3 disconnected,".red(), "name:".blue(), connection.name.blue().underline());
-                    results.remove(addr);
+                    connections.remove(addr);
                 }
             } else {
-                results.remove(addr);
+                connections.remove(addr);
             }
         }
-        drop(results);
+        drop(connections);
         sleep(time::Duration::from_millis(420));
     }
 }
