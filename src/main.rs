@@ -7,15 +7,16 @@ use crate::utils::*;
 use std::{time, time::SystemTime};
 use std::collections::HashMap;
 use std::net::{SocketAddr, UdpSocket};
-use std::process::Command;
 use std::sync::Mutex;
 use std::thread::sleep;
 use colored::Colorize;
+use enigo::{Enigo, Key, KeyboardControllable};
 use scoped_threadpool::Pool;
 use crate::media::MediaState;
 
 const INCOMING_PREFIX:&str = "ev2pc-";
 const OUTGOING_PREFIX:&str = "pc2ev-";
+
 fn main() {
     let connections:Mutex<HashMap<SocketAddr, Ev3Connection>> = Mutex::new(HashMap::new());
 
@@ -24,25 +25,20 @@ fn main() {
 
     let mut pool = Pool::new(2);
 
+    let mut enigo = Enigo::new();
+
     pool.scoped(|scope| {
-        scope.execute(|| socket_thread(&connections, listen));
+        scope.execute(|| socket_thread(&connections, listen, enigo));
         scope.execute(|| keepalive_thread(&connections));
         scope.join_all();
     });
 }
 
-fn socket_thread(connections: &Mutex<HashMap<SocketAddr, Ev3Connection>>, listen:&str) {
+fn socket_thread(connections: &Mutex<HashMap<SocketAddr, Ev3Connection>>, listen:&str, mut enigo:Enigo) {
     println!("insane_thread");
 
     let socket = UdpSocket::bind(listen).expect("Couldn't bind to address");
     let mut buf = [0; 1024];
-
-    let mut media_state = MediaState {
-        playing: false,
-        current_song: "Never Gonna Give You Up".to_string(),
-        current_time: 0,
-        max_time: 0
-    };
 
     loop {
         let (amount, src) = socket.recv_from(&mut buf).expect("Couldn't receive data");
@@ -76,44 +72,11 @@ fn socket_thread(connections: &Mutex<HashMap<SocketAddr, Ev3Connection>>, listen
                     send_to_ev3(&socket, &src, "keepalive");
                     drop(connections);
                 }
-                "media" => {
-                    if split.len() > 1 {
-                        let connections = connections.lock().unwrap();
-                        match split[1] {
-                            "query" => {
-                                send_media_state(&socket, &src, &media_state);
-                            }
-                            "pp" => {
-                                press_key("172");
-                                media_state = media::invert_playing(&media_state);
-                                send_media_state(&socket, &src, &media_state);
-                            }
-                            "next" => {
-                                press_key("171");
-                                send_media_state(&socket, &src, &media_state);
-                            }
-                            "prev" => {
-                                press_key("173");
-                                send_media_state(&socket, &src, &media_state);
-                            }
-                            "volup" => {
-                                press_key("123");
-                                send_media_state(&socket, &src, &media_state);
-                            }
-                            "voldown" => {
-                                press_key("122");
-                                send_media_state(&socket, &src, &media_state);
-                            }
-                            "veryfunnyandhilariousmessagethatdefinitelydoesnotshutdownthewholefuckingsystemlmao" => {
-                                println!("{}", "Shutting down...".red());
-                                let mut command = Command::new("sudo");
-                                command.arg("shutdown").arg("now");
-                                command.status().unwrap();
-                            }
-                            _ => {}
-                        }
-                        drop(connections);
-                    }
+                "kd" => {
+                    key_down(&mut enigo, Key::Space);
+                }
+                "ku" => {
+                    key_up(&mut enigo, Key::Space);
                 }
                 &_ => {
                     println!("Unknown command: {}", command);
@@ -123,17 +86,14 @@ fn socket_thread(connections: &Mutex<HashMap<SocketAddr, Ev3Connection>>, listen
     }
 }
 
-fn send_media_state(socket: &UdpSocket, src: &SocketAddr, funneh: &MediaState) {
-    send_to_ev3(socket, src, format!("media?result={}|{}|{}|{}",
-                                     if funneh.playing { 0 } else { 1},
-                                     base64::encode(&funneh.current_song),
-                                     funneh.current_time, funneh.max_time).as_str());
+fn key_down(mut enigo:&mut Enigo, key:Key) {
+    println!("{}", "Key down".on_bright_cyan().bright_green());
+    enigo.key_down(key);
 }
 
-fn press_key(key:&str) {
-    let mut command = Command::new("xdotool");
-    command.arg("key").arg(key);
-    command.status().unwrap();
+fn key_up(mut enigo:&mut Enigo, key:Key) {
+    println!("{}", "Key down".on_bright_cyan().bright_red());
+    enigo.key_up(key);
 }
 
 fn keepalive_thread(connections: &Mutex<HashMap<SocketAddr, Ev3Connection>>) {
