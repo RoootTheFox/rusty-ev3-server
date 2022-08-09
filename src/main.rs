@@ -92,7 +92,7 @@ fn key_down(mut enigo:&mut Enigo, key:Key) {
 }
 
 fn key_up(mut enigo:&mut Enigo, key:Key) {
-    println!("{}", "Key down".on_bright_cyan().bright_red());
+    println!("{}", "Key up".on_bright_cyan().bright_red());
     enigo.key_up(key);
 }
 
